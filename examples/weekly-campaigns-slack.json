@@ -1,0 +1,163 @@
+{
+  "name": "Post the week's sent Rasket campaigns to Slack",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## A weekly note of what went out\n\nEvery Monday morning, each campaign sent in the last seven days is posted to a Slack channel. Rasket sends no webhook when a campaign is sent, so this reads the list on a schedule.\n\n1. **Every Monday**: change the day and hour if you like.\n2. **Sent campaigns**: connect Rasket with a Full access API key.\n3. **Campaign details**: reads each campaign's subject, which the list does not carry. Use the same Rasket credential.\n4. **Post to Slack**: connect Slack and pick the channel.\n5. Activate the workflow.",
+        "height": 360,
+        "width": 520
+      },
+      "id": "b836f4b5-761c-5cc2-ab73-8ee63ada2dea",
+      "name": "Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-60, -340]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [1],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "5ba83b1c-e15f-5d82-95a5-732f1a47dff0",
+      "name": "Every Monday",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "resource": "campaign",
+        "operation": "getAll",
+        "limit": 50,
+        "filters": {
+          "status": "sent"
+        }
+      },
+      "id": "e33443ef-753e-524f-aebf-311f10beb109",
+      "name": "Sent campaigns",
+      "type": "n8n-nodes-rasket.rasket",
+      "typeVersion": 1,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "68984d26-7919-500c-a046-ad178f06d7b7",
+              "leftValue": "={{ $json.sent_at }}",
+              "rightValue": "={{ $now.minus({ days: 7 }).toISO() }}",
+              "operator": {
+                "type": "dateTime",
+                "operation": "after"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e5a89b32-81e6-5462-860c-23bbc83ad391",
+      "name": "Sent in the last week",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "resource": "campaign",
+        "operation": "get",
+        "campaign": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "simplify": true
+      },
+      "id": "515115bf-bb73-596f-8bac-0db225bbe881",
+      "name": "Campaign details",
+      "type": "n8n-nodes-rasket.rasket",
+      "typeVersion": 1,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "text": "=Sent: *{{ $json.name }}*, \"{{ $json.subject }}\", on {{ DateTime.fromISO($json.sent_at).toFormat('ccc d LLL') }}",
+        "otherOptions": {}
+      },
+      "id": "56a43c67-d856-53e6-a242-d8608305130d",
+      "name": "Post to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [960, 0]
+    }
+  ],
+  "connections": {
+    "Every Monday": {
+      "main": [
+        [
+          {
+            "node": "Sent campaigns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sent campaigns": {
+      "main": [
+        [
+          {
+            "node": "Sent in the last week",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sent in the last week": {
+      "main": [
+        [
+          {
+            "node": "Campaign details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Campaign details": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

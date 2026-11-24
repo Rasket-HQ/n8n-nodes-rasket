@@ -1,0 +1,18 @@
+{
+  "node": "n8n-nodes-rasket.rasket",
+  "nodeVersion": "1.0",
+  "codexVersion": "1.0",
+  "categories": ["Communication", "Marketing & Content"],
+  "resources": {
+    "credentialDocumentation": [
+      {
+        "url": "https://www.rasket.com/docs/integrations/n8n#connect-your-rasket-account"
+      }
+    ],
+    "primaryDocumentation": [
+      {
+        "url": "https://www.rasket.com/docs/integrations/n8n"
+      }
+    ]
+  }
+}

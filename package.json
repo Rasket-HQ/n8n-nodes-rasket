@@ -1,0 +1,63 @@
+{
+  "name": "n8n-nodes-rasket",
+  "version": "0.3.0",
+  "private": false,
+  "description": "Send email and SMS, manage contacts, segments, topics, suppressions and campaigns, and start workflows from Rasket webhooks.",
+  "license": "MIT",
+  "homepage": "https://www.rasket.com",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "rasket",
+    "email",
+    "transactional email",
+    "email marketing",
+    "sms",
+    "email api"
+  ],
+  "author": {
+    "name": "Rasket",
+    "email": "support@rasket.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rasket-HQ/n8n-nodes-rasket.git"
+  },
+  "engines": {
+    "node": ">=20.15"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "dev": "n8n-node dev",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
+    "lint": "n8n-node lint",
+    "test": "vitest run",
+    "scan": "node scripts/scan.mjs"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "strict": true,
+    "credentials": [
+      "dist/credentials/RasketApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Rasket/Rasket.node.js",
+      "dist/nodes/RasketTrigger/RasketTrigger.node.js"
+    ]
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  },
+  "devDependencies": {
+    "@n8n/node-cli": "0.57.4",
+    "@n8n/scan-community-package": "0.44.0",
+    "@types/node": "24.13.3",
+    "eslint": "9.39.5",
+    "n8n-workflow": "2.41.2",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

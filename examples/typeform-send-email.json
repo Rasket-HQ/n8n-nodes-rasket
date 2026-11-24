@@ -1,0 +1,65 @@
+{
+  "name": "Send a Rasket email for each new Typeform response",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Thank everyone who fills in your form\n\nEach new Typeform response sends one email from your own domain.\n\n1. **Typeform Trigger**: connect Typeform and pick the form.\n2. **Send thank-you email**: connect Rasket with a Full access API key, pick a **From** address on a verified domain, and change the **To** expression to your form's email question.\n3. Activate the workflow.",
+        "height": 300,
+        "width": 460
+      },
+      "id": "d60d4ce2-ffb9-57d5-ae62-8eadb1760bbc",
+      "name": "Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-60, -320]
+    },
+    {
+      "parameters": {
+        "formId": ""
+      },
+      "id": "8b6f1869-f834-512f-b75e-ded3f4ea3475",
+      "name": "Typeform Trigger",
+      "type": "n8n-nodes-base.typeformTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0],
+      "webhookId": "23903a12-011f-5af9-a34b-1397d9b88656"
+    },
+    {
+      "parameters": {
+        "resource": "email",
+        "operation": "send",
+        "from": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "to": "={{ $json[\"What's your email address?\"] }}",
+        "subject": "Thanks, we got your answers",
+        "html": "<p>Hi,</p><p>Thanks for filling in our form. We read every answer and will be in touch soon.</p>",
+        "text": "Hi,\n\nThanks for filling in our form. We read every answer and will be in touch soon.",
+        "options": {}
+      },
+      "id": "8917497e-b60a-5ab9-bc87-533d7ad7c995",
+      "name": "Send thank-you email",
+      "type": "n8n-nodes-rasket.rasket",
+      "typeVersion": 1,
+      "position": [260, 0]
+    }
+  ],
+  "connections": {
+    "Typeform Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send thank-you email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "name": "Update HubSpot contacts when a Rasket email bounces",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Mark bounced addresses in your CRM\n\nWhen an email bounces for good, the contact is updated in HubSpot so nobody keeps writing to a dead address.\n\n1. **Rasket Trigger**: connect Rasket with a Full access API key. Activating the workflow creates the webhook endpoint in Rasket; n8n must be reachable at a public https address.\n2. **Permanent bounces only** drops temporary bounces, which Rasket retries.\n3. **Update HubSpot contact**: connect HubSpot and pick the contact property to set.\n4. Activate the workflow.",
+        "height": 320,
+        "width": 520
+      },
+      "id": "58f26f41-486f-5f0d-a38b-f51384788682",
+      "name": "Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-60, -340]
+    },
+    {
+      "parameters": {
+        "events": ["email.bounced"]
+      },
+      "id": "2360d9f6-b09c-586a-99bd-1d590aac78e6",
+      "name": "Rasket Trigger",
+      "type": "n8n-nodes-rasket.rasketTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "webhookId": "ac7fbd9c-c4cc-5dcd-a92c-cdfaf8497b72"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5aafc17e-3bbf-555c-848e-54b8a70501a8",
+              "leftValue": "={{ $json.bounce.type }}",
+              "rightValue": "Permanent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6fc32ece-9656-59f5-ae92-b8b3fa34c7fe",
+      "name": "Permanent bounces only",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "upsert",
+        "email": "={{ $json.to[0] }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "",
+                "value": "=Bounced on {{ $json.occurred_at }}: {{ $json.bounce.message }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "4522ced7-a585-5872-8521-50f8fcf031a3",
+      "name": "Update HubSpot contact",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.1,
+      "position": [480, 0]
+    }
+  ],
+  "connections": {
+    "Rasket Trigger": {
+      "main": [
+        [
+          {
+            "node": "Permanent bounces only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Permanent bounces only": {
+      "main": [
+        [
+          {
+            "node": "Update HubSpot contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,260 @@
+# Publishes `n8n-nodes-rasket` to npm, with provenance, from a version tag the owner pushes, and from
+# nowhere else:
+#
+#   git tag n8n-nodes-rasket-v0.3.0 && git push origin n8n-nodes-rasket-v0.3.0
+#
+# This repository is generated. Every file in it is written by an export from Rasket's own
+# repository, where the package is developed and its checks run on every change; the export deletes
+# anything added here by hand. Each export is one commit carrying an `Exported-From:` trailer, and a
+# tag on any other commit is refused. Every commit here is authored and committed as Rasket Team
+# <info@rasket.com>; a tag whose commit, or tagger, is anyone else is refused too.
+#
+# The tag must equal `package.json`'s version, and `CHANGELOG.md` must have its heading and nothing
+# under `## Unreleased`. The package's checks run, then `scan --out out` builds, packs and inspects
+# the tarball (n8n's own scanner rules included), and the publish job uploads **that file**, never
+# a second pack.
+#
+# The credential is **npm trusted publishing**: the publish job exchanges this run's OIDC token, so
+# there is no long-lived token to store. npm can only attach a trusted publisher to a package that
+# exists, so the very first publish uses `N8N_NPM_BOOTSTRAP_TOKEN`, a short-lived token held in the
+# `npm` environment and deleted afterwards.
+#
+# Provenance is not optional: n8n verifies only packages published from GitHub Actions with it.
+name: Publish the n8n nodes
+
+on:
+  push:
+    tags: ["n8n-nodes-rasket-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-n8n-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  # Everything that decides whether a release is fit to leave. No OIDC permission here: the job that
+  # runs the package's build tooling (n8n's CLI and scanner among it) cannot mint a registry
+  # credential.
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      dist_tag: ${{ steps.version.outputs.dist_tag }}
+      sha256: ${{ steps.tarball.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The whole history, so the ancestry check below can see main.
+          fetch-depth: 0
+
+      # A tag can be pushed at any commit. Only a commit already on main may reach the registry.
+      - name: The tagged commit is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME points at a commit that is not on main. Tag a commit on main."
+            exit 1
+          fi
+
+      # Only an export of a committed, reviewed source: the export prints this trailer, and marks a
+      # test export of uncommitted files `-dirty`.
+      - name: The tagged commit is a clean export
+        run: |
+          trailer="$(git log -1 --format='%(trailers:key=Exported-From,valueonly)' "$GITHUB_SHA" | head -n1)"
+          if ! printf '%s' "$trailer" | grep -Eq '^rasket@[0-9a-f]{40}$'; then
+            echo "::error::$GITHUB_SHA has no clean 'Exported-From: rasket@<commit>' trailer (found '$trailer'). Tag an export commit."
+            exit 1
+          fi
+          echo "Exported from $trailer"
+
+      # The mirror is public, and every commit in it is Rasket Team's, never a person's. The export
+      # sets this in the clone and its pre-push hook refuses anything else; this is the last check.
+      - name: The tagged commit is Rasket Team's
+        env:
+          IDENTITY: "Rasket Team <info@rasket.com>"
+        run: |
+          # The checkout can leave an annotated tag lightweight; fetch the tag object itself.
+          git fetch --no-tags --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          found=0
+          author="$(git log -1 --format='%an <%ae>' "$GITHUB_SHA")"
+          committer="$(git log -1 --format='%cn <%ce>' "$GITHUB_SHA")"
+          if [ "$author" != "$IDENTITY" ] || [ "$committer" != "$IDENTITY" ]; then
+            echo "::error::$GITHUB_SHA is authored by '$author' and committed by '$committer', not $IDENTITY. Commit the export again as Rasket Team and tag that commit."
+            found=1
+          fi
+          if [ "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = "tag" ]; then
+            tagger="$(git for-each-ref --format='%(taggername) %(taggeremail)' "refs/tags/$GITHUB_REF_NAME")"
+            if [ "$tagger" != "$IDENTITY" ]; then
+              echo "::error::$GITHUB_REF_NAME is an annotated tag by '$tagger', not $IDENTITY. Use a lightweight tag."
+              found=1
+            fi
+          fi
+          exit "$found"
+
+      - name: The tag, the manifest and the changelog agree
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#n8n-nodes-rasket-v}"
+          manifest="$(node -p "require('./package.json').version")"
+          if [ "$version" != "$manifest" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME says $version; package.json says $manifest."
+            exit 1
+          fi
+          escaped="$(printf '%s' "$version" | sed 's/[.]/\\./g')"
+          if ! grep -Eq "^## ${escaped}( |$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## $version' heading."
+            exit 1
+          fi
+          unreleased="$(awk '/^## /{ if (inside) exit; if ($0 == "## Unreleased") { inside = 1; next } } inside && NF' CHANGELOG.md)"
+          if [ -n "$unreleased" ]; then
+            echo "::error::CHANGELOG.md has entries under '## Unreleased'. Move them under '## $version' first."
+            exit 1
+          fi
+          # A prerelease (`0.4.0-rc.1`) must not become what Community nodes installs.
+          case "$version" in
+            *-*) dist_tag=next ;;
+            *) dist_tag=latest ;;
+          esac
+          {
+            echo "version=$version"
+            echo "dist_tag=$dist_tag"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # `.npmrc` sets `ignore-scripts`: nothing in the tree runs code at install.
+      - run: npm ci --no-audit --no-fund
+
+      - name: The package's checks
+        run: npm run typecheck && npm run lint && npm test
+
+      # Build, `npm pack`, the packed manifest and file list, every node loaded from the tarball, and
+      # n8n's scanner rules on source and tarball.
+      - name: Build, pack and scan the tarball
+        run: npm run scan -- --out "$GITHUB_WORKSPACE/out"
+
+      - name: Exactly the tarball the gate inspected
+        id: tarball
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          count="$(find out -maxdepth 1 -name '*.tgz' | wc -l)"
+          if [ "$count" -ne 1 ] || [ ! -f "out/n8n-nodes-rasket-$VERSION.tgz" ]; then
+            echo "::error::Expected exactly out/n8n-nodes-rasket-$VERSION.tgz; found: $(ls out)"
+            exit 1
+          fi
+          sha256="$(sha256sum "out/n8n-nodes-rasket-$VERSION.tgz" | cut -d' ' -f1)"
+          echo "$sha256  out/n8n-nodes-rasket-$VERSION.tgz"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: n8n-nodes-rasket-tarball
+          path: out/n8n-nodes-rasket-${{ steps.version.outputs.version }}.tgz
+          if-no-files-found: error
+
+  # The only job that can reach the registry, and the only one holding `id-token: write`. It checks
+  # out nothing and installs nothing: it takes the tarball the build job inspected, by digest.
+  #
+  # The `npm` environment is what npm's trusted publisher names, and it is restricted to
+  # `n8n-nodes-rasket-v*` tags with a required reviewer: npm does not check the ref.
+  publish:
+    name: publish
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      # Trusted publishing and provenance: npm exchanges this run's OIDC token for a short-lived
+      # publish credential and signs a statement binding the tarball to this workflow run.
+      id-token: write
+    steps:
+      # No `registry-url`: that writes an `_authToken` line, with a placeholder when there is no
+      # token. npm tries OIDC first either way, but once the bootstrap secret is gone this job then
+      # holds nothing token-shaped at all.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Trusted publishing needs npm 11.5.1 or later. Node 24 ships it; fail with a sentence rather
+      # than installing an npm the build job never saw.
+      - name: npm can publish with OIDC
+        run: |
+          version="$(npm --version)"
+          if [ "$(printf '%s\n' 11.5.1 "$version" | sort -V | head -n1)" != "11.5.1" ]; then
+            echo "::error::npm $version cannot use trusted publishing; it needs 11.5.1 or later."
+            exit 1
+          fi
+          echo "npm $version"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: n8n-nodes-rasket-tarball
+          path: out
+
+      - name: The same bytes the build job inspected
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+        run: echo "$SHA256  out/n8n-nodes-rasket-$VERSION.tgz" | sha256sum --check --strict
+
+      # Only for the first publish, before npm has a package to attach the trusted publisher to.
+      # Delete the secret once the trusted publisher is set; this step then writes nothing.
+      - name: The bootstrap token, while it exists
+        env:
+          BOOTSTRAP: ${{ secrets.N8N_NPM_BOOTSTRAP_TOKEN }}
+        run: |
+          if [ -z "$BOOTSTRAP" ]; then
+            echo "No N8N_NPM_BOOTSTRAP_TOKEN: publishing through the trusted publisher."
+            exit 0
+          fi
+          echo "::notice::Publishing with N8N_NPM_BOOTSTRAP_TOKEN. Set up the trusted publisher and delete the secret."
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$BOOTSTRAP" > "$HOME/.npmrc"
+
+      # The last step that reaches a registry. `./` so npm reads a file, not a GitHub repository.
+      - name: Publish that tarball
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          DIST_TAG: ${{ needs.build.outputs.dist_tag }}
+        run: npm publish "./out/n8n-nodes-rasket-$VERSION.tgz" --provenance --access public --tag "$DIST_TAG"
+
+  # The only job holding `contents: write`. Re-runnable on its own: an existing release is left alone.
+  release:
+    name: release
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: n8n-nodes-rasket-tarball
+          path: out
+      - name: Cut the GitHub release from the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          awk -v version="$VERSION" '
+            $0 ~ "^## " { if (inside) exit; if (index($0, "## " version " ") == 1 || $0 == "## " version) { inside = 1; next } }
+            inside { print }
+          ' CHANGELOG.md > release-notes.md
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; leaving it as it is."
+            exit 0
+          fi
+          prerelease=""
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" "out/n8n-nodes-rasket-$VERSION.tgz" \
+            --verify-tag --title "n8n-nodes-rasket $VERSION (npm)" --notes-file release-notes.md $prerelease

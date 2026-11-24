@@ -1,0 +1,113 @@
+{
+  "name": "Add new Rasket contacts to Google Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Keep a sheet of new contacts\n\nEvery contact added in Rasket, through the API, an import or a form, becomes a row.\n\n1. Make a sheet with the columns **Email**, **First name**, **Last name** and **Added**.\n2. **Rasket Trigger**: connect Rasket with a Full access API key. n8n must be reachable at a public https address.\n3. **Add row**: connect Google Sheets and pick the document and the sheet.\n4. Activate the workflow.",
+        "height": 300,
+        "width": 460
+      },
+      "id": "ff584a33-75a1-58bd-a854-64c0e6751f36",
+      "name": "Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-60, -320]
+    },
+    {
+      "parameters": {
+        "events": ["contact.created"]
+      },
+      "id": "bbe4de3f-8ef8-53de-8b07-0b4a69ecc643",
+      "name": "Rasket Trigger",
+      "type": "n8n-nodes-rasket.rasketTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "webhookId": "a4bec476-b069-5308-888e-0c74b35325f1"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $json.email }}",
+            "First name": "={{ $json.first_name }}",
+            "Last name": "={{ $json.last_name }}",
+            "Added": "={{ $json.created_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First name",
+              "displayName": "First name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last name",
+              "displayName": "Last name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Added",
+              "displayName": "Added",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "92bbddaf-9548-5c75-9844-eefc9e9c0279",
+      "name": "Add row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [260, 0]
+    }
+  ],
+  "connections": {
+    "Rasket Trigger": {
+      "main": [
+        [
+          {
+            "node": "Add row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
